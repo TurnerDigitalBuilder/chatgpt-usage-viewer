@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Data Parser</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom Scrollbar for the table container */
+        .custom-scrollbar::-webkit-scrollbar {
+            height: 8px;
+            width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1; 
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #c1c1c1; 
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8; 
+        }
+        
+        /* Table Styles */
+        th {
+            white-space: nowrap;
+        }
+        td {
+            white-space: nowrap;
+            max-width: 400px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans h-screen flex flex-col overflow-hidden">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 p-4 shadow-sm flex justify-between items-center shrink-0 z-20">
+        <div class="flex items-center gap-2">
+            <div class="bg-blue-600 text-white p-2 rounded-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+            </div>
+            <h1 class="text-xl font-bold tracking-tight text-gray-900">Weekly User Report Parser</h1>
+        </div>
+        <div class="flex gap-2">
+            <button onclick="downloadCSV()" id="download-btn" class="hidden px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors border border-blue-200 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Download CSV
+            </button>
+            <label for="csvInput" class="cursor-pointer px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors shadow-sm flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                Upload CSV
+                <input type="file" id="csvInput" accept=".csv" class="hidden">
+            </label>
+        </div>
+    </header>
+
+    <!-- Main Content Area (Split View) -->
+    <div class="flex flex-1 overflow-hidden" id="main-layout">
+        
+        <!-- Sidebar (Filters) -->
+        <aside class="w-72 bg-white border-r border-gray-200 flex flex-col z-10 hidden" id="sidebar">
+            <div class="p-4 border-b border-gray-100">
+                <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4">Filters</h2>
+                
+                <!-- Search -->
+                <div class="mb-6">
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Search Keywords</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                        </span>
+                        <input type="text" id="search-input" placeholder="Search data..." class="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow">
+                    </div>
+                </div>
+
+                <!-- Dynamic Filters Container -->
+                <div id="filter-container" class="space-y-6">
+                    <!-- Filters injected here via JS -->
+                </div>
+            </div>
+            
+            <div class="mt-auto p-4 border-t border-gray-100 bg-gray-50">
+                <div class="flex justify-between items-center text-xs text-gray-500">
+                    <span id="row-count">0 rows loaded</span>
+                    <button onclick="resetFilters()" class="text-blue-600 hover:text-blue-800 font-medium">Reset</button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col relative bg-gray-50 overflow-hidden w-full" id="main-container">
+            
+            <!-- Empty State (Centered) -->
+            <div id="empty-state" class="absolute inset-0 flex flex-col items-center justify-center p-6 text-center z-0">
+                <div class="mb-6 mx-auto w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center text-gray-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-900 mb-2">Upload your Weekly Report</h2>
+                <p class="text-gray-500 mb-8 max-w-md">Select the Turner Construction CSV file to parse, analyze, and view the data table.</p>
+            </div>
+
+            <!-- Table Container -->
+            <div id="table-wrapper" class="hidden flex-1 flex flex-col w-full h-full z-10">
+                <div class="flex-1 overflow-auto custom-scrollbar relative">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-gray-100 sticky top-0 z-10 shadow-sm border-b border-gray-200">
+                            <tr id="table-header" class="text-xs uppercase text-gray-500 font-semibold tracking-wider">
+                                <!-- Headers injected via JS -->
+                            </tr>
+                        </thead>
+                        <tbody id="table-body" class="text-sm divide-y divide-gray-100 bg-white">
+                            <!-- Rows injected via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-4 right-4 bg-gray-800 text-white px-4 py-2 rounded shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 z-50">
+        Notification
+    </div>
+
+    <script>
+        // --- State ---
+        let rawData = [];
+        let filteredData = []; // Store current filtered set for export
+        let headers = [];
+        let filterState = {
+            search: '',
+            user_status: [],
+            is_active: [],
+            company: []
+        };
+        // Define columns to hide 
+        const hiddenHeaders = new Set([
+            'cadence', 'period_start', 'period_end', 'account_id', 
+            'public_id', 'role', 'user_role', 'department'
+        ]);
+
+        // --- Configuration ---
+        const domainMapping = {
+        // Turner
+        'tcco.com': 'Turner',
+        'turnerconstruction.com': 'Turner',
+        'sourceblue.com': 'Turner',
+        'tsibinc.com': 'Turner',
+        'xploffsite.com': 'Turner',
+        'fecrent.com': 'Turner',
+        'tcco.onmicrosoft.com': 'Turner',
+
+        // Clark Builders
+        'clarkbuilders.com': 'Clark Builders',
+        'northstar.rentals': 'Clark Builders',
+
+        // FlatironDragados
+        'fdcorp.com': 'FlatironDragados',
+        'schiavone.net': 'FlatironDragados',
+        'pulice.com': 'FlatironDragados',
+        'eecruz.com': 'FlatironDragados',
+        'dfcp23.com': 'FlatironDragados',
+        'flatironcorp.com': 'FlatironDragados',
+        'dragados-usa.com': 'FlatironDragados',
+        'spcco.com': 'FlatironDragados',
+        'dhojv.com': 'FlatironDragados',
+        'princecontracting.com': 'FlatironDragados',
+        'dragados-canada.com': 'FlatironDragados',
+        'sr400cjv.com': 'FlatironDragados',
+        'jfwhite.com': 'FlatironDragados',
+        'dragados.com': 'FlatironDragados',
+        'linxspv.com': 'FlatironDragados',
+        'hrcpjv.com': 'FlatironDragados',
+
+        // ACS
+        'grupoacs.com': 'ACS',
+
+        // ACS - Infrastructure
+        'acsinfra.com': 'ACS - Infrastucture',
+
+        // Iridium
+        'iridium-acs.com': 'Iridium',
+
+        // Dornan
+        'dornangroup.com': 'Dornan',
+
+        // Hochtief
+        'hochtief.de': 'Hochtief',
+        'hochtief.nl': 'Hochtief',
+        'hochtiefppps.uk': 'Hochtief',
+
+        // OpenAI
+        'openai.com': 'OpenAI',
+
+        // Intern
+        'vanderbilt.edu': 'Intern',
+
+        // Personal
+        'gmail.com': 'Personal',
+        'hotmail.de': 'Personal',
+        'outlook.com': 'Personal',
+        'yahoo.com': 'Personal',
+        };
+
+
+        // --- DOM Elements ---
+        const fileInput = document.getElementById('csvInput');
+        const emptyState = document.getElementById('empty-state');
+        const tableWrapper = document.getElementById('table-wrapper');
+        const sidebar = document.getElementById('sidebar');
+        const tableHeader = document.getElementById('table-header');
+        const tableBody = document.getElementById('table-body');
+        const rowCount = document.getElementById('row-count');
+        const searchInput = document.getElementById('search-input');
+        const filterContainer = document.getElementById('filter-container');
+        const toast = document.getElementById('toast');
+        const downloadBtn = document.getElementById('download-btn');
+
+        // --- Event Listeners ---
+        fileInput.addEventListener('change', handleFileUpload);
+        searchInput.addEventListener('input', (e) => {
+            filterState.search = e.target.value.toLowerCase();
+            applyFilters();
+        });
+
+        // --- Core Functions ---
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                processCSV(text);
+                showToast(`Loaded ${file.name}`);
+            };
+            reader.readAsText(file);
+        }
+
+        function processCSV(text) {
+            const rows = [];
+            let currentRow = [];
+            let cell = '';
+            let inQuotes = false;
+            
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                const nextChar = text[i + 1];
+
+                if (char === '"') {
+                    if (inQuotes && nextChar === '"') {
+                        cell += '"';
+                        i++; 
+                    } else {
+                        inQuotes = !inQuotes;
+                    }
+                } else if (char === ',' && !inQuotes) {
+                    currentRow.push(cell);
+                    cell = '';
+                } else if ((char === '\r' || char === '\n') && !inQuotes) {
+                    if (char === '\r' && nextChar === '\n') i++;
+                    if (currentRow.length > 0 || cell.length > 0) {
+                        currentRow.push(cell);
+                        rows.push(currentRow);
+                    }
+                    currentRow = [];
+                    cell = '';
+                } else {
+                    cell += char;
+                }
+            }
+            if (currentRow.length > 0 || cell.length > 0) {
+                currentRow.push(cell);
+                rows.push(currentRow);
+            }
+
+            if (rows.length < 1) return;
+
+            headers = rows[0];
+            rawData = rows.slice(1).filter(r => r.length === headers.length);
+            
+            // --- ENRICH DATA: ADD COMPANY COLUMN ---
+            const emailIndex = headers.indexOf('email');
+            
+            if (emailIndex !== -1) {
+                headers.push('company');
+                
+                rawData.forEach(row => {
+                    const email = row[emailIndex] || '';
+                    let company = 'Other'; 
+                    
+                    if (email.includes('@')) {
+                        const domain = email.split('@')[1].toLowerCase().trim();
+                        if (domainMapping[domain]) {
+                            company = domainMapping[domain];
+                        }
+                    }
+                    row.push(company);
+                });
+            }
+
+            // Set Default Filters
+            filterState.user_status = ['enabled'];
+            filterState.is_active = ['1']; 
+            filterState.company = []; 
+
+            // Build UI
+            generateFilterControls();
+            applyFilters(); 
+            
+            // Switch UI visibility
+            emptyState.classList.add('hidden');
+            tableWrapper.classList.remove('hidden');
+            sidebar.classList.remove('hidden');
+            downloadBtn.classList.remove('hidden');
+        }
+
+        function generateFilterControls() {
+            filterContainer.innerHTML = '';
+            
+            // 1. Company Filter (Moved to Top)
+            const companyIndex = headers.indexOf('company');
+            if (companyIndex !== -1) {
+                const uniqueCompanies = [...new Set(rawData.map(row => row[companyIndex]))].sort();
+                createCheckboxGroup('Company', 'company', uniqueCompanies);
+            }
+
+            // 2. User Status Filter
+            const statusIndex = headers.indexOf('user_status');
+            if (statusIndex !== -1) {
+                const uniqueStatuses = [...new Set(rawData.map(row => row[statusIndex]).filter(Boolean))].sort();
+                createCheckboxGroup('User Status', 'user_status', uniqueStatuses);
+            }
+
+            // 3. Is Active Filter
+            const activeIndex = headers.indexOf('is_active');
+            if (activeIndex !== -1) {
+                const uniqueActive = [...new Set(rawData.map(row => row[activeIndex] ? row[activeIndex] : '0'))].sort();
+                createCheckboxGroup('Is Active', 'is_active', uniqueActive, (val) => {
+                    return val === '1' ? 'Active' : 'Inactive';
+                });
+            }
+        }
+
+        function createCheckboxGroup(title, key, values, labelFormatter = (v) => v) {
+            const group = document.createElement('div');
+            group.className = 'filter-group';
+            
+            const titleEl = document.createElement('h3');
+            titleEl.className = 'text-xs font-medium text-gray-500 mb-2 uppercase';
+            titleEl.innerText = title;
+            group.appendChild(titleEl);
+
+            const container = document.createElement('div');
+            container.className = 'space-y-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar';
+
+            values.forEach(val => {
+                const label = document.createElement('label');
+                label.className = 'flex items-center space-x-2 cursor-pointer group';
+                
+                const input = document.createElement('input');
+                input.type = 'checkbox';
+                input.value = val;
+                
+                if (filterState[key] && filterState[key].includes(val)) {
+                    input.checked = true;
+                }
+
+                input.className = 'rounded border-gray-300 text-blue-600 focus:ring-blue-500';
+                input.addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        filterState[key].push(val);
+                    } else {
+                        filterState[key] = filterState[key].filter(item => item !== val);
+                    }
+                    applyFilters();
+                });
+
+                const span = document.createElement('span');
+                span.className = 'text-sm text-gray-600 group-hover:text-gray-900';
+                span.innerText = labelFormatter(val); 
+
+                label.appendChild(input);
+                label.appendChild(span);
+                container.appendChild(label);
+            });
+
+            group.appendChild(container);
+            filterContainer.appendChild(group);
+        }
+
+        function resetFilters() {
+            filterState = { search: '', user_status: [], is_active: [], company: [] };
+            searchInput.value = '';
+            const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+            checkboxes.forEach(cb => cb.checked = false);
+            applyFilters();
+        }
+
+        function applyFilters() {
+            const statusIndex = headers.indexOf('user_status');
+            const activeIndex = headers.indexOf('is_active');
+            const companyIndex = headers.indexOf('company');
+
+            filteredData = rawData.filter(row => {
+                if (filterState.search) {
+                    const matchesSearch = row.some(cell => cell.toLowerCase().includes(filterState.search));
+                    if (!matchesSearch) return false;
+                }
+                if (filterState.user_status.length > 0 && statusIndex !== -1) {
+                    if (!filterState.user_status.includes(row[statusIndex])) return false;
+                }
+                if (filterState.is_active.length > 0 && activeIndex !== -1) {
+                    const rowVal = row[activeIndex] ? row[activeIndex] : '0';
+                    if (!filterState.is_active.includes(rowVal)) return false;
+                }
+                if (filterState.company.length > 0 && companyIndex !== -1) {
+                    if (!filterState.company.includes(row[companyIndex])) return false;
+                }
+                return true;
+            });
+
+            renderTable(filteredData);
+            rowCount.innerText = `${filteredData.length} rows visible`;
+        }
+
+        function renderTable(data) {
+            const visibleIndices = [];
+            const visibleHeaders = []; 
+            
+            tableHeader.innerHTML = '';
+            headers.forEach((header, index) => {
+                if (!hiddenHeaders.has(header)) {
+                    visibleIndices.push(index);
+                    visibleHeaders.push(header);
+                    
+                    const th = document.createElement('th');
+                    th.className = "px-4 py-3 border-b border-gray-200 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky top-0";
+                    th.innerText = header.replace(/_/g, ' '); 
+                    tableHeader.appendChild(th);
+                }
+            });
+
+            tableBody.innerHTML = '';
+            const displayData = data.slice(0, 100); 
+            
+            displayData.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-blue-50 transition-colors";
+                
+                visibleIndices.forEach((index, i) => {
+                    const rawValue = row[index] || '';
+                    const headerName = visibleHeaders[i];
+                    const cellHtml = formatCellHtml(headerName, rawValue);
+
+                    const td = document.createElement('td');
+                    td.className = "px-4 py-3 border-b border-gray-100 text-gray-600 align-top";
+                    td.innerHTML = cellHtml; 
+                    tr.appendChild(td);
+                });
+                tableBody.appendChild(tr);
+            });
+
+            if (data.length > 100) {
+                const infoRow = document.createElement('tr');
+                infoRow.innerHTML = `<td colspan="${visibleIndices.length}" class="p-4 text-center text-gray-400 italic">Showing first 100 of ${data.length} matches...</td>`;
+                tableBody.appendChild(infoRow);
+            } else if (data.length === 0) {
+                const infoRow = document.createElement('tr');
+                infoRow.innerHTML = `<td colspan="${visibleIndices.length}" class="p-8 text-center text-gray-400">No results found matching filters</td>`;
+                tableBody.appendChild(infoRow);
+            }
+        }
+
+        function downloadCSV() {
+            if (!filteredData || filteredData.length === 0) {
+                showToast("No data to export");
+                return;
+            }
+
+            // 1. Identify Visible Columns
+            const visibleIndices = [];
+            const csvHeaders = [];
+            headers.forEach((h, i) => {
+                if (!hiddenHeaders.has(h)) {
+                    visibleIndices.push(i);
+                    csvHeaders.push(h); 
+                }
+            });
+
+            // 2. Build Content
+            let csvContent = csvHeaders.join(",") + "\n";
+
+            filteredData.forEach(row => {
+                const rowString = visibleIndices.map((index, i) => {
+                    const headerName = csvHeaders[i];
+                    let rawVal = row[index] || "";
+                    
+                    // Convert complex JSON to readable text for CSV (removing IDs etc)
+                    let textVal = formatCellText(headerName, rawVal);
+                    
+                    // Escape CSV special characters
+                    if (textVal.includes(",") || textVal.includes('"') || textVal.includes("\n")) {
+                        textVal = `"${textVal.replace(/"/g, '""')}"`;
+                    }
+                    return textVal;
+                }).join(",");
+                csvContent += rowString + "\n";
+            });
+
+            // 3. Trigger Download
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", "parsed_user_report.csv");
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast("Export downloaded!");
+        }
+
+        // Helper to format values as HTML (Badges, Lists, etc.) for Display
+        function formatCellHtml(header, value) {
+            if (!value) return '';
+
+            if (header === 'is_active') {
+                return value === '1' 
+                    ? '<span class="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">Yes</span>' 
+                    : '<span class="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">No</span>';
+            }
+            if (header === 'company') {
+                return `<span class="px-2 py-0.5 rounded text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">${value}</span>`;
+            }
+
+            const { parsed, isComplex } = tryParseJSON(value);
+
+            if (isComplex) {
+                if (Array.isArray(parsed)) {
+                    if (parsed.length === 0) return '<span class="text-gray-400 italic">Empty</span>';
+                    return parsed.map(item => 
+                        `<span class="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full mr-1 mb-1 border border-blue-200 whitespace-nowrap">${item}</span>`
+                    ).join('');
+                } 
+                else if (typeof parsed === 'object') {
+                    const entries = Object.entries(parsed);
+                    if (entries.length === 0) return '<span class="text-gray-400 italic">None</span>';
+                    
+                    return entries.map(([k, v]) => {
+                        const isId = /^(?:[a-f0-9]{32}|g-[a-f0-9]{32}|user-[\w-]{15,})$/i.test(k);
+                        if (isId) {
+                            return `<span class="inline-block bg-blue-50 text-blue-800 text-xs px-2 py-0.5 rounded border border-blue-100 mr-1 mb-1 font-medium">${v}</span>`;
+                        }
+                        return `<span class="inline-block bg-gray-100 text-gray-700 text-xs px-2 py-0.5 rounded border border-gray-200 mr-1 mb-1"><span class="font-semibold text-gray-900">${k}:</span> ${v}</span>`;
+                    }).join('');
+                }
+            }
+            return value;
+        }
+
+        // Helper to format values as Plain Text for CSV Export
+        function formatCellText(header, value) {
+             if (!value) return '';
+             
+             if (header === 'is_active') {
+                 return value === '1' ? 'Active' : 'Inactive';
+             }
+
+             const { parsed, isComplex } = tryParseJSON(value);
+
+             if (isComplex) {
+                if (Array.isArray(parsed)) {
+                    return parsed.join(', ');
+                } 
+                else if (typeof parsed === 'object') {
+                    const entries = Object.entries(parsed);
+                    return entries.map(([k, v]) => {
+                        const isId = /^(?:[a-f0-9]{32}|g-[a-f0-9]{32}|user-[\w-]{15,})$/i.test(k);
+                        // If it's an ID, just return the value (matches table logic)
+                        if (isId) return v;
+                        return `${k}: ${v}`;
+                    }).join('; ');
+                }
+             }
+             return value;
+        }
+
+        function tryParseJSON(value) {
+            const trimmed = value.trim();
+            const looksLikeArray = trimmed.startsWith('[') && trimmed.endsWith(']');
+            const looksLikeObj = trimmed.startsWith('{') && trimmed.endsWith('}');
+
+            if (looksLikeArray || looksLikeObj) {
+                try {
+                    let validJson = value;
+                    if (value.includes("'")) {
+                         validJson = value.replace(/'/g, '"');
+                    }
+                    const parsed = JSON.parse(validJson);
+                    if (parsed !== null && (Array.isArray(parsed) || typeof parsed === 'object')) {
+                        return { parsed, isComplex: true };
+                    }
+                } catch (e) { }
+            }
+            return { parsed: null, isComplex: false };
+        }
+
+        function showToast(msg) {
+            toast.innerText = msg;
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+    </script>
+</body>
+</html>
